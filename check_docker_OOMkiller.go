@@ -15,6 +15,7 @@ import (
 )
 
 type config struct {
+	debug             bool
 	format            string
 	lastContainerFile string
 	level             nagiosplugin.Status
@@ -25,8 +26,7 @@ func main() {
 
 	cli := createDockerClient()
 	listOptions := prepareListOptions()
-	addSinceFromFile(&listOptions, cfg.lastContainerFile)
-	fmt.Println(listOptions)
+	addSinceFromFile(&listOptions, cfg)
 
 	containers, err := cli.ContainerList(context.Background(), listOptions)
 	if err != nil {
@@ -71,6 +71,7 @@ func main() {
 }
 
 func parseFlags() config {
+	debug := flag.Bool("debug", false, "Print debug prints to STDERR")
 	format := flag.String("format", "Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer", "Format of output use go-templates like docker inspect")
 	lastContainerFile := flag.String("l", "", "Path to file where is store last processed container")
 	warning := flag.Bool("w", false, "Report OOMKilled container as warning")
@@ -85,7 +86,7 @@ func parseFlags() config {
 		level = nagiosplugin.CRITICAL
 	}
 
-	return config{lastContainerFile: *lastContainerFile, level: level, format: *format}
+	return config{lastContainerFile: *lastContainerFile, level: level, format: *format, debug: *debug}
 }
 
 func createDockerClient() *client.Client {
@@ -106,15 +107,23 @@ func prepareListOptions() types.ContainerListOptions {
 	return types.ContainerListOptions{All: true, Filters: filterOptions}
 }
 
-func addSinceFromFile(listOptions *types.ContainerListOptions, lastContainerFile string) {
-	if lastContainerFile != "" {
-		if _, err := os.Stat(lastContainerFile); err == nil {
-			sinceContainerIdByte, err := ioutil.ReadFile(lastContainerFile)
+func addSinceFromFile(listOptions *types.ContainerListOptions, cfg config) {
+	if cfg.lastContainerFile != "" {
+		if _, err := os.Stat(cfg.lastContainerFile); err == nil {
+			if cfg.debug {
+				fmt.Fprintf(os.Stderr, "Load from file %s\n", cfg.lastContainerFile)
+			}
+
+			sinceContainerIdByte, err := ioutil.ReadFile(cfg.lastContainerFile)
 			if err != nil {
-				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Read file %s failed: %s", lastContainerFile, err.Error()))
+				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Read file %s failed: %s", cfg.lastContainerFile, err.Error()))
 			}
 
 			if len((string)(sinceContainerIdByte)) == 64 {
+				if cfg.debug {
+					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerIdByte)
+				}
+
 				listOptions.Since = (string)(sinceContainerIdByte)
 			}
 		}
