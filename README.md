@@ -13,7 +13,7 @@ this is plugin for nagios, icinga or compatible monitoring
 
 this plugin list non-running containers and check which was killed by OOM killer (means container have less memory then need)
 
-because I don't each run of this plugin report same OOMKilled containers, is possible save last checked container (id) to file
+because I don't each run of this plugin report same OOMKilled containers, is possible save last checked container (id) to file (this use since filter and need API 1.24 (docker 1.12))
 
 this plugin comunicate with docker API via `unix:///var/run/docker.sock` and must have right rights (root/docker-group)
 

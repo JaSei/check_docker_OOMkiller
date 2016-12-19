@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"github.com/docker/docker/api/types"
@@ -10,9 +11,11 @@ import (
 	"golang.org/x/net/context"
 	"io/ioutil"
 	"os"
+	"text/template"
 )
 
 type config struct {
+	format            string
 	lastContainerFile string
 	level             nagiosplugin.Status
 }
@@ -23,6 +26,7 @@ func main() {
 	cli := createDockerClient()
 	listOptions := prepareListOptions()
 	addSinceFromFile(&listOptions, cfg.lastContainerFile)
+	fmt.Println(listOptions)
 
 	containers, err := cli.ContainerList(context.Background(), listOptions)
 	if err != nil {
@@ -31,6 +35,11 @@ func main() {
 
 	check := nagiosplugin.NewCheck()
 	defer check.Finish()
+
+	tmpl, err := template.New("format").Parse(cfg.format)
+	if err != nil {
+		nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Prepare template failed: %s", err.Error()))
+	}
 
 	var lastContainer types.Container
 	for i := range containers {
@@ -43,7 +52,14 @@ func main() {
 		}
 
 		if containerInfo.State.OOMKilled {
-			check.AddResult(cfg.level, fmt.Sprintf("Container %s (%s) was killed by OOM killer", containerInfo.ID, containerInfo.Config.Image))
+			buf := new(bytes.Buffer)
+			err := tmpl.Execute(buf, containerInfo)
+			if err != nil {
+				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Execute template failed: %s", err.Error()))
+			}
+
+			buf.String()
+			check.AddResult(cfg.level, fmt.Sprintln(buf.String()))
 		}
 
 		lastContainer = c
@@ -55,6 +71,7 @@ func main() {
 }
 
 func parseFlags() config {
+	format := flag.String("format", "Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer", "Format of output use go-templates like docker inspect")
 	lastContainerFile := flag.String("l", "", "Path to file where is store last processed container")
 	warning := flag.Bool("w", false, "Report OOMKilled container as warning")
 	critical := flag.Bool("c", false, "Report OOMKilled container as critical")
@@ -68,7 +85,7 @@ func parseFlags() config {
 		level = nagiosplugin.CRITICAL
 	}
 
-	return config{lastContainerFile: *lastContainerFile, level: level}
+	return config{lastContainerFile: *lastContainerFile, level: level, format: *format}
 }
 
 func createDockerClient() *client.Client {
