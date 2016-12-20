@@ -59,7 +59,7 @@ func main() {
 			}
 
 			buf.String()
-			check.AddResult(cfg.level, fmt.Sprintln(buf.String()))
+			check.AddResult(cfg.level, buf.String())
 		}
 
 		lastContainer = c
@@ -124,7 +124,10 @@ func addSinceFromFile(listOptions *types.ContainerListOptions, cfg config) {
 					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerIdByte)
 				}
 
+				//docker 1.10
 				listOptions.Since = (string)(sinceContainerIdByte)
+				//docker 1.12
+				listOptions.Filters.Add("since", (string)(sinceContainerIdByte))
 			}
 		}
 	}
