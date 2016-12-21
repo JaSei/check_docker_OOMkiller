@@ -29,6 +29,7 @@ docker ps -a -q --filter=status=exited --filter=status=dead --filter=since=$LAST
 * `-l` - file path to persist last checked container id
 * `-w` - OOM killed container is report as warning (default)
 * `-c` - OOM killed container is report as critical
+* `--format` - Format of output use go-templates like docker inspect (default "Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer")
 
 ## WHY EXISTS THIS PLUGIN?
 
