@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/context"
 	"io/ioutil"
 	"os"
+	"strings"
 	"text/template"
 )
 
@@ -26,7 +27,7 @@ func main() {
 
 	cli := createDockerClient()
 	listOptions := prepareListOptions()
-	addSinceFromFile(&listOptions, cfg)
+	addSinceFromFile(cli, &listOptions, cfg)
 
 	containers, err := cli.ContainerList(context.Background(), listOptions)
 	if err != nil {
@@ -107,7 +108,7 @@ func prepareListOptions() types.ContainerListOptions {
 	return types.ContainerListOptions{All: true, Filters: filterOptions}
 }
 
-func addSinceFromFile(listOptions *types.ContainerListOptions, cfg config) {
+func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOptions, cfg config) {
 	if cfg.lastContainerFile != "" {
 		if _, err := os.Stat(cfg.lastContainerFile); err == nil {
 			if cfg.debug {
@@ -119,15 +120,25 @@ func addSinceFromFile(listOptions *types.ContainerListOptions, cfg config) {
 				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Read file %s failed: %s", cfg.lastContainerFile, err.Error()))
 			}
 
-			if len((string)(sinceContainerIdByte)) == 64 {
+			sinceContainerId := strings.TrimSpace((string)(sinceContainerIdByte))
+
+			fmt.Println(len(sinceContainerId))
+
+			if len(sinceContainerId) == 64 {
 				if cfg.debug {
-					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerIdByte)
+					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerId)
 				}
 
-				//docker 1.10
-				listOptions.Since = (string)(sinceContainerIdByte)
-				//docker 1.12
-				listOptions.Filters.Add("since", (string)(sinceContainerIdByte))
+				_, err := cli.ContainerInspect(context.Background(), sinceContainerId)
+
+				if err == nil {
+					//docker 1.10
+					listOptions.Since = sinceContainerId
+					//docker 1.12
+					listOptions.Filters.Add("since", sinceContainerId)
+				} else if cfg.debug {
+					fmt.Fprintf(os.Stderr, "Loaded container %s don't exists\n", sinceContainerId)
+				}
 			}
 		}
 	}
