@@ -122,8 +122,6 @@ func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOption
 
 			sinceContainerId := strings.TrimSpace((string)(sinceContainerIdByte))
 
-			fmt.Println(len(sinceContainerId))
-
 			if len(sinceContainerId) == 64 {
 				if cfg.debug {
 					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerId)
