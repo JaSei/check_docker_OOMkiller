@@ -2,32 +2,35 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/olorin/nagiosplugin"
 	"golang.org/x/net/context"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
 	"os"
 	"strings"
 	"text/template"
 )
 
-type config struct {
-	debug             bool
-	format            string
-	lastContainerFile string
-	level             nagiosplugin.Status
-}
+const VERSION = "1.0.0"
+
+var (
+	debug             = kingpin.Flag("debug", "Print debug prints to STDERR").Bool()
+	format            = kingpin.Flag("format", "Format of output use go-templates like docker inspect").Default("Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer").String()
+	lastContainerFile = kingpin.Flag("last", "Path to file where is store last processed container").Short('l').String()
+	level             = kingpin.Flag("level", "Report OOMKilled containers warning or critical").Default("warning").Enum("warning", "critical")
+)
 
 func main() {
-	cfg := parseFlags()
+	kingpin.Version(VERSION)
+	kingpin.Parse()
 
 	cli := createDockerClient()
 	listOptions := prepareListOptions()
-	addSinceFromFile(cli, &listOptions, cfg)
+	addSinceFromFile(cli, &listOptions)
 
 	containers, err := cli.ContainerList(context.Background(), listOptions)
 	if err != nil {
@@ -37,7 +40,7 @@ func main() {
 	check := nagiosplugin.NewCheck()
 	defer check.Finish()
 
-	tmpl, err := template.New("format").Parse(cfg.format)
+	tmpl, err := template.New("format").Parse(*format)
 	if err != nil {
 		nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Prepare template failed: %s", err.Error()))
 	}
@@ -60,34 +63,21 @@ func main() {
 			}
 
 			buf.String()
-			check.AddResult(cfg.level, buf.String())
+
+			nagiosStatus := nagiosplugin.WARNING
+			if *level == "critical" {
+				nagiosStatus = nagiosplugin.CRITICAL
+			}
+
+			check.AddResult(nagiosStatus, buf.String())
 		}
 
 		lastContainer = c
 	}
 
-	writeSinceToFile(cfg.lastContainerFile, lastContainer.ID)
+	writeSinceToFile(*lastContainerFile, lastContainer.ID)
 
 	check.AddResult(nagiosplugin.OK, "No OOM killed container")
-}
-
-func parseFlags() config {
-	debug := flag.Bool("debug", false, "Print debug prints to STDERR")
-	format := flag.String("format", "Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer", "Format of output use go-templates like docker inspect")
-	lastContainerFile := flag.String("l", "", "Path to file where is store last processed container")
-	warning := flag.Bool("w", false, "Report OOMKilled container as warning")
-	critical := flag.Bool("c", false, "Report OOMKilled container as critical")
-
-	flag.Parse()
-
-	level := nagiosplugin.WARNING
-	if *warning && *critical {
-		nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Can be set only warning or critical option"))
-	} else if *critical {
-		level = nagiosplugin.CRITICAL
-	}
-
-	return config{lastContainerFile: *lastContainerFile, level: level, format: *format, debug: *debug}
 }
 
 func createDockerClient() *client.Client {
@@ -108,22 +98,22 @@ func prepareListOptions() types.ContainerListOptions {
 	return types.ContainerListOptions{All: true, Filters: filterOptions}
 }
 
-func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOptions, cfg config) {
-	if cfg.lastContainerFile != "" {
-		if _, err := os.Stat(cfg.lastContainerFile); err == nil {
-			if cfg.debug {
-				fmt.Fprintf(os.Stderr, "Load from file %s\n", cfg.lastContainerFile)
+func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOptions) {
+	if *lastContainerFile != "" {
+		if _, err := os.Stat(*lastContainerFile); err == nil {
+			if *debug {
+				fmt.Fprintf(os.Stderr, "Load from file %s\n", *lastContainerFile)
 			}
 
-			sinceContainerIdByte, err := ioutil.ReadFile(cfg.lastContainerFile)
+			sinceContainerIdByte, err := ioutil.ReadFile(*lastContainerFile)
 			if err != nil {
-				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Read file %s failed: %s", cfg.lastContainerFile, err.Error()))
+				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Read file %s failed: %s", *lastContainerFile, err.Error()))
 			}
 
 			sinceContainerId := strings.TrimSpace((string)(sinceContainerIdByte))
 
 			if len(sinceContainerId) == 64 {
-				if cfg.debug {
+				if *debug {
 					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerId)
 				}
 
@@ -134,7 +124,7 @@ func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOption
 					listOptions.Since = sinceContainerId
 					//docker 1.12
 					listOptions.Filters.Add("since", sinceContainerId)
-				} else if cfg.debug {
+				} else if *debug {
 					fmt.Fprintf(os.Stderr, "Loaded container %s don't exists\n", sinceContainerId)
 				}
 			}
