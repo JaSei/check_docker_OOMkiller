@@ -20,7 +20,7 @@ const VERSION = "1.0.0"
 var (
 	debug             = kingpin.Flag("debug", "Print debug prints to STDERR").Bool()
 	format            = kingpin.Flag("format", "Format of output use go-templates like docker inspect").Default("Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer").String()
-	lastContainerFile = kingpin.Flag("last", "Path to file where is store last processed container").Short('l').String()
+	lastContainerFile = kingpin.Flag("store", "Path to file where is store last processed container").String()
 	level             = kingpin.Flag("level", "Report OOMKilled containers warning or critical").Default("warning").Enum("warning", "critical")
 )
 
