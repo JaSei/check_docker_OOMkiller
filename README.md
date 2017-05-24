@@ -40,10 +40,10 @@ since version 1.1.0 this check supports slack
 
 2. insert your token to option `--slack YOUR_TOKEN`
 
-3. use option `slackChannel` for choose channel to send message
+3. use option `slackChannel` to choose channel to send message
    (support multiple channels) `--slackChannel A --slackChannel B`
 
-4. for set mentions, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
+4. to set mentions, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
 
 ### example image label (Dockerfile)
 
