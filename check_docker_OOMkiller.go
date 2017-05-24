@@ -24,7 +24,7 @@ var (
 	lastContainerFile = kingpin.Flag("store", "Path to file where is store last processed container").String()
 	level             = kingpin.Flag("level", "Report OOMKilled containers warning or critical").Default("warning").Enum("warning", "critical")
 	slackToken        = kingpin.Flag("slack", "Slack token, for reports problematic container to slack").String()
-	slackChannels     = kingpin.Flag("channel", "Slack channel for reports problematic container to slack").Strings()
+	slackChannels     = kingpin.Flag("slackChannel", "Slack channel for reports problematic container to slack").Strings()
 )
 
 func main() {
