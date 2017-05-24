@@ -34,19 +34,18 @@ docker ps -a -q --filter=status=exited --filter=status=dead --filter=since=$LAST
 * `slackChannel` - slack channel(s) to post message
 
 ## slack support
-since version 1.1.0 support this check slack
+since version 1.1.0 this check supports slack
 
-create new bot via https://YOUR-SLACK.slack.com/apps/manage/custom-integrations
+1. create new bot via https://YOUR-SLACK.slack.com/apps/manage/custom-integrations
 
-and insert your token to option `--slack YOUR_TOKEN`
+2. insert your token to option `--slack YOUR_TOKEN`
 
-use option `slackChannel` for choose channel to send message
+3. use option `slackChannel` for choose channel to send message
+   (support multiple channels) `--slackChannel A --slackChannel B`
 
-(support multiple channels) `--slackChannel A --slackChannel B`
+4. for set mentions, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
 
-for set mentions, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
-
-for example image label (Dockerfile):
+### example image label (Dockerfile)
 
 ```
 FROM ...
@@ -54,7 +53,7 @@ LABEL SLACK_CONTACT "@user,@other_user"
 ...
 ```
 
-for example container label:
+### example container label
 
 ```
 docker run --label SLACK_CONTACT="@user,@otheruser"
