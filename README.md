@@ -30,6 +30,34 @@ docker ps -a -q --filter=status=exited --filter=status=dead --filter=since=$LAST
 * `-w` - OOM killed container is report as warning (default)
 * `-c` - OOM killed container is report as critical
 * `--format` - Format of output use go-templates like docker inspect (default "Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer")
+* `slack` - slack token
+* `slackChannel` - slack channel(s) to post message
+
+## slack support
+since version 1.1.0 this check supports slack
+
+1. create new bot via https://YOUR-SLACK.slack.com/apps/manage/custom-integrations
+
+2. insert your token to option `--slack YOUR_TOKEN`
+
+3. use option `slackChannel` to choose channel to send message
+   (support multiple channels) `--slackChannel A --slackChannel B`
+
+4. to set mentions, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
+
+### example image label (Dockerfile)
+
+```
+FROM ...
+LABEL SLACK_CONTACT "@user,@other_user"
+...
+```
+
+### example container label
+
+```
+docker run --label SLACK_CONTACT="@user,@otheruser"
+```
 
 ## WHY EXISTS THIS PLUGIN?
 

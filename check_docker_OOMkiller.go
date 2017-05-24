@@ -6,6 +6,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/nlopes/slack"
 	"github.com/olorin/nagiosplugin"
 	"golang.org/x/net/context"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -15,13 +16,15 @@ import (
 	"text/template"
 )
 
-const VERSION = "1.0.0"
+const VERSION = "1.1.0"
 
 var (
 	debug             = kingpin.Flag("debug", "Print debug prints to STDERR").Bool()
 	format            = kingpin.Flag("format", "Format of output use go-templates like docker inspect").Default("Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer").String()
 	lastContainerFile = kingpin.Flag("store", "Path to file where is store last processed container").String()
 	level             = kingpin.Flag("level", "Report OOMKilled containers warning or critical").Default("warning").Enum("warning", "critical")
+	slackToken        = kingpin.Flag("slack", "Slack token, for reports problematic container to slack").String()
+	slackChannels     = kingpin.Flag("channel", "Slack channel for reports problematic container to slack").Strings()
 )
 
 func main() {
@@ -62,14 +65,30 @@ func main() {
 				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Execute template failed: %s", err.Error()))
 			}
 
-			buf.String()
-
 			nagiosStatus := nagiosplugin.WARNING
 			if *level == "critical" {
 				nagiosStatus = nagiosplugin.CRITICAL
 			}
 
 			check.AddResult(nagiosStatus, buf.String())
+
+			if *slackToken != "" && len(*slackChannels) > 0 {
+
+				slackMessage := new(bytes.Buffer)
+
+				slackContact, ok := c.Labels["SLACK_CONTACT"]
+				if ok {
+					slackMessage.WriteString(slackContact + ": ")
+				}
+				slackMessage.WriteString(buf.String())
+
+				for _, slackChannel := range *slackChannels {
+					err := reportToSlack(slackChannel, slackMessage.String())
+					if err != nil {
+						nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Send message to slack failed: %s", err))
+					}
+				}
+			}
 		}
 
 		lastContainer = c
@@ -140,4 +159,15 @@ func writeSinceToFile(lastContainerFile, id string) {
 			nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Write to file %s failed: %s", lastContainerFile, err.Error()))
 		}
 	}
+}
+
+func reportToSlack(slackChannel, report string) error {
+	api := slack.New(*slackToken)
+	params := slack.PostMessageParameters{
+		Username:  "mmcloud OOM killer",
+		LinkNames: 1,
+	}
+	_, _, err := api.PostMessage(slackChannel, report, params)
+
+	return err
 }
