@@ -16,7 +16,7 @@ import (
 	"text/template"
 )
 
-const VERSION = "1.1.0"
+const VERSION = "2.0.0"
 
 var (
 	debug             = kingpin.Flag("debug", "Print debug prints to STDERR").Bool()
@@ -25,6 +25,7 @@ var (
 	level             = kingpin.Flag("level", "Report OOMKilled containers warning or critical").Default("warning").Enum("warning", "critical")
 	slackToken        = kingpin.Flag("slack", "Slack token, for reports problematic container to slack").String()
 	slackChannels     = kingpin.Flag("slackChannel", "Slack channel for reports problematic container to slack").Strings()
+	slackUser         = kingpin.Flag("slackUser", "Name which will be used as bot name").Default("OOM killer").String()
 )
 
 func main() {
@@ -59,8 +60,8 @@ func main() {
 		}
 
 		if containerInfo.State.OOMKilled {
-			buf := new(bytes.Buffer)
-			err := tmpl.Execute(buf, containerInfo)
+			message := new(bytes.Buffer)
+			err := tmpl.Execute(message, containerInfo)
 			if err != nil {
 				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Execute template failed: %s", err.Error()))
 			}
@@ -70,20 +71,28 @@ func main() {
 				nagiosStatus = nagiosplugin.CRITICAL
 			}
 
-			check.AddResult(nagiosStatus, buf.String())
+			check.AddResult(nagiosStatus, message.String())
 
 			if *slackToken != "" && len(*slackChannels) > 0 {
-
-				slackMessage := new(bytes.Buffer)
+				var channelsOverrides []string
 
 				slackContact, ok := c.Labels["SLACK_CONTACT"]
 				if ok {
-					slackMessage.WriteString(slackContact + ": ")
-				}
-				slackMessage.WriteString(buf.String())
+					strings.Replace(slackContact, " ", "", -1)
+					strings.Replace(slackContact, "#", "", -1)
+					slackContacts := strings.Split(slackContact, ",")
 
-				for _, slackChannel := range *slackChannels {
-					err := reportToSlack(slackChannel, slackMessage.String())
+					channelsOverrides = make([]string, len(slackContacts))
+					copy(channelsOverrides, slackContacts)
+				} else {
+					channelsOverrides = make([]string, len(*slackChannels))
+					copy(channelsOverrides, *slackChannels)
+				}
+
+				fmt.Println(channelsOverrides)
+
+				for _, slackChannel := range channelsOverrides {
+					err := reportToSlack(slackChannel, message.String())
 					if err != nil {
 						nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Send message to slack failed: %s", err))
 					}
@@ -164,7 +173,7 @@ func writeSinceToFile(lastContainerFile, id string) {
 func reportToSlack(slackChannel, report string) error {
 	api := slack.New(*slackToken)
 	params := slack.PostMessageParameters{
-		Username:  "mmcloud OOM killer",
+		Username:  *slackUser,
 		LinkNames: 1,
 	}
 	_, _, err := api.PostMessage(slackChannel, report, params)
