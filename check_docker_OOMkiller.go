@@ -89,8 +89,6 @@ func main() {
 					copy(channelsOverrides, *slackChannels)
 				}
 
-				fmt.Println(channelsOverrides)
-
 				for _, slackChannel := range channelsOverrides {
 					err := reportToSlack(slackChannel, message.String())
 					if err != nil {
