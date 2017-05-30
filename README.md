@@ -31,19 +31,26 @@ docker ps -a -q --filter=status=exited --filter=status=dead --filter=since=$LAST
 * `-c` - OOM killed container is report as critical
 * `--format` - Format of output use go-templates like docker inspect (default "Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer")
 * `slack` - slack token
-* `slackChannel` - slack channel(s) to post message
+* `slackChannel` - slack (fallback) channel(s) to post message
+* `slackUser` - slack bot custom username (default are `OOM killer`)
 
 ## slack support
 since version 1.1.0 this check supports slack
+
+since version 2.0.0 we have breaking changes of slack support
 
 1. create new bot via https://YOUR-SLACK.slack.com/apps/manage/custom-integrations
 
 2. insert your token to option `--slack YOUR_TOKEN`
 
-3. use option `slackChannel` to choose channel to send message
+3. use option `slackChannel` as fallback channel (if docker/container don't have set `SLACK_CONTACT`) to send message
    (support multiple channels) `--slackChannel A --slackChannel B`
 
-4. to set mentions, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
+4. to send DM or docker specific channel, use docker [image or container label](https://docs.docker.com/engine/userguide/labels-custom-metadata/#value-guidelines) `SLACK_CONTACT`
+
+  * for send to DM use `@user` syntax
+  * for send to channel use `#channel` syntax
+  * is possible send to more DM/channel - use coma (`,`) as separator
 
 ### example image label (Dockerfile)
 
