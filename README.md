@@ -33,6 +33,9 @@ docker ps -a -q --filter=status=exited --filter=status=dead --filter=since=$LAST
 * `slack` - slack token
 * `slackChannel` - slack (fallback) channel(s) to post message
 * `slackUser` - slack bot custom username (default are `OOM killer`)
+* `debug` - Enable debug mode. Debug prints are print to STDERR
+* `debugFile` - Redirect debug prints to file (must be set debug option too)
+
 
 ## slack support
 since version 1.1.0 this check supports slack

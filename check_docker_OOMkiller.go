@@ -11,15 +11,17 @@ import (
 	"golang.org/x/net/context"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"text/template"
 )
 
-const VERSION = "2.0.0"
+const VERSION = "2.1.0"
 
 var (
-	debug             = kingpin.Flag("debug", "Print debug prints to STDERR").Bool()
+	debug             = kingpin.Flag("debug", "Enable debug mode. Debug prints are print to STDERR").Bool()
+	debugFile         = kingpin.Flag("debugFile", "Redirect debug prints to file (must be set debug option too)").String()
 	format            = kingpin.Flag("format", "Format of output use go-templates like docker inspect").Default("Container {{.ID}} ({{.Config.Image}}) was killed by OOM killer").String()
 	lastContainerFile = kingpin.Flag("store", "Path to file where is store last processed container").String()
 	level             = kingpin.Flag("level", "Report OOMKilled containers warning or critical").Default("warning").Enum("warning", "critical")
@@ -32,13 +34,24 @@ func main() {
 	kingpin.Version(VERSION)
 	kingpin.Parse()
 
+	if *debug && *debugFile != "" {
+		file, err := os.OpenFile(*debugFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0755)
+		defer file.Close()
+
+		if err != nil {
+			logAndExit(fmt.Sprintf("Open file %s failed: %s", *debugFile, err.Error()))
+		}
+
+		log.SetOutput(file)
+	}
+
 	cli := createDockerClient()
 	listOptions := prepareListOptions()
 	addSinceFromFile(cli, &listOptions)
 
 	containers, err := cli.ContainerList(context.Background(), listOptions)
 	if err != nil {
-		nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("List docker containers: %s", err.Error()))
+		logAndExit(fmt.Sprintf("List docker containers: %s", err.Error()))
 	}
 
 	check := nagiosplugin.NewCheck()
@@ -46,7 +59,7 @@ func main() {
 
 	tmpl, err := template.New("format").Parse(*format)
 	if err != nil {
-		nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Prepare template failed: %s", err.Error()))
+		logAndExit(fmt.Sprintf("Prepare template failed: %s", err.Error()))
 	}
 
 	var lastContainer types.Container
@@ -54,16 +67,24 @@ func main() {
 		//becuase order is from newer to older
 		c := containers[len(containers)-1-i]
 
+		if *debug {
+			log.Printf("Inspecting container %s", c.ID)
+		}
+
 		containerInfo, err := cli.ContainerInspect(context.Background(), c.ID)
 		if err != nil {
-			nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Container %s inspect error: %s", c.ID, err.Error()))
+			logAndExit(fmt.Sprintf("Container %s inspect error: %s", c.ID, err.Error()))
 		}
 
 		if containerInfo.State.OOMKilled {
+			if *debug {
+				log.Printf("Found OOM killed container %s", c.ID)
+			}
+
 			message := new(bytes.Buffer)
 			err := tmpl.Execute(message, containerInfo)
 			if err != nil {
-				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Execute template failed: %s", err.Error()))
+				logAndExit(fmt.Sprintf("Execute template failed: %s", err.Error()))
 			}
 
 			nagiosStatus := nagiosplugin.WARNING
@@ -92,7 +113,7 @@ func main() {
 				for _, slackChannel := range channelsOverrides {
 					err := reportToSlack(slackChannel, message.String())
 					if err != nil {
-						nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Send message to slack failed: %s", err))
+						logAndExit(fmt.Sprintf("Send message to slack failed: %s", err))
 					}
 				}
 			}
@@ -110,7 +131,7 @@ func createDockerClient() *client.Client {
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	cli, err := client.NewClient("unix:///var/run/docker.sock", "v1.18", nil, defaultHeaders)
 	if err != nil {
-		nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Connect to docker: %s", err.Error()))
+		logAndExit(fmt.Sprintf("Connect to docker: %s", err.Error()))
 	}
 
 	return cli
@@ -128,19 +149,19 @@ func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOption
 	if *lastContainerFile != "" {
 		if _, err := os.Stat(*lastContainerFile); err == nil {
 			if *debug {
-				fmt.Fprintf(os.Stderr, "Load from file %s\n", *lastContainerFile)
+				log.Printf("Load from file %s", *lastContainerFile)
 			}
 
 			sinceContainerIdByte, err := ioutil.ReadFile(*lastContainerFile)
 			if err != nil {
-				nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Read file %s failed: %s", *lastContainerFile, err.Error()))
+				logAndExit(fmt.Sprintf("Read file %s failed: %s", *lastContainerFile, err.Error()))
 			}
 
 			sinceContainerId := strings.TrimSpace((string)(sinceContainerIdByte))
 
 			if len(sinceContainerId) == 64 {
 				if *debug {
-					fmt.Fprintf(os.Stderr, "Loaded container %s from file\n", sinceContainerId)
+					log.Printf("Loaded container %s from file", sinceContainerId)
 				}
 
 				_, err := cli.ContainerInspect(context.Background(), sinceContainerId)
@@ -151,8 +172,12 @@ func addSinceFromFile(cli *client.Client, listOptions *types.ContainerListOption
 					//docker 1.12
 					listOptions.Filters.Add("since", sinceContainerId)
 				} else if *debug {
-					fmt.Fprintf(os.Stderr, "Loaded container %s don't exists\n", sinceContainerId)
+					log.Printf("Loaded container %s don't exists", sinceContainerId)
 				}
+			}
+		} else {
+			if *debug {
+				log.Printf("File %s doesn't load: %s", *lastContainerFile, err.Error())
 			}
 		}
 	}
@@ -163,7 +188,7 @@ func writeSinceToFile(lastContainerFile, id string) {
 		err := ioutil.WriteFile(lastContainerFile, []byte(id), 0644)
 
 		if err != nil {
-			nagiosplugin.Exit(nagiosplugin.UNKNOWN, fmt.Sprintf("Write to file %s failed: %s", lastContainerFile, err.Error()))
+			logAndExit(fmt.Sprintf("Write to file %s failed: %s", lastContainerFile, err.Error()))
 		}
 	}
 }
@@ -177,4 +202,11 @@ func reportToSlack(slackChannel, report string) error {
 	_, _, err := api.PostMessage(slackChannel, report, params)
 
 	return err
+}
+
+func logAndExit(exitMsg string) {
+	if *debug {
+		log.Println(exitMsg)
+	}
+	nagiosplugin.Exit(nagiosplugin.UNKNOWN, exitMsg)
 }
