@@ -17,7 +17,7 @@ import (
 	"text/template"
 )
 
-const VERSION = "2.1.0"
+const VERSION = "3.0.0"
 
 var (
 	debug             = kingpin.Flag("debug", "Enable debug mode. Debug prints are print to STDERR").Bool()
@@ -113,7 +113,7 @@ func main() {
 				for _, slackChannel := range channelsOverrides {
 					err := reportToSlack(slackChannel, message.String())
 					if err != nil {
-						logAndExit(fmt.Sprintf("Send message to slack failed: %s", err))
+						log.Printf("Send message to slack failed: %s", err)
 					}
 				}
 			}
